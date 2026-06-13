@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Axiom — AI Stock Analysis</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg:      #08090f;
+    --surface: #0f1117;
+    --card:    #141820;
+    --border:  #1e2535;
+    --accent:  #6366f1;
+    --accent2: #818cf8;
+    --green:   #22c55e;
+    --red:     #f43f5e;
+    --amber:   #f59e0b;
+    --purple:  #a78bfa;
+    --cyan:    #22d3ee;
+    --text:    #f1f5f9;
+    --muted:   #64748b;
+    --subtle:  #1e2d45;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; min-height: 100vh; }
+
+  /* ── Landing ── */
+  #landing { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; text-align: center; }
+  .logo { font-size: 13px; font-weight: 700; letter-spacing: 0.18em; color: var(--accent2); text-transform: uppercase; margin-bottom: 28px; }
+  .hero-title { font-size: clamp(36px, 6vw, 68px); font-weight: 800; line-height: 1.08; letter-spacing: -0.03em; margin-bottom: 18px; }
+  .hero-title span { background: linear-gradient(135deg, var(--accent2), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .hero-sub { font-size: 17px; color: var(--muted); max-width: 480px; line-height: 1.65; margin-bottom: 40px; }
+  .search-wrap { position: relative; width: 100%; max-width: 540px; }
+  .search-wrap input { width: 100%; padding: 16px 60px 16px 20px; font-size: 17px; font-weight: 500; background: var(--card); border: 1.5px solid var(--border); border-radius: 14px; color: var(--text); outline: none; transition: border-color 0.2s; text-transform: uppercase; }
+  .search-wrap input::placeholder { color: var(--muted); text-transform: none; font-weight: 400; }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: var(--accent); border: none; border-radius: 9px; width: 40px; height: 40px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.15s; }
+  .search-btn:hover { opacity: 0.85; }
+  .search-btn svg { width: 18px; height: 18px; stroke: white; fill: none; stroke-width: 2.2; stroke-linecap: round; }
+  .quick-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 20px; }
+  .chip { padding: 6px 14px; font-size: 12px; font-weight: 500; background: var(--card); border: 0.5px solid var(--border); border-radius: 20px; cursor: pointer; color: var(--muted); transition: all 0.15s; }
+  .chip:hover { border-color: var(--accent); color: var(--accent2); }
+
+  /* ── Loader ── */
+  #loader { display: none; min-height: 100vh; align-items: center; justify-content: center; flex-direction: column; gap: 20px; }
+  .loader-ring { width: 48px; height: 48px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-steps { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .loader-step { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+  .loader-step.done { color: var(--green); }
+  .loader-step.active { color: var(--text); }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+  /* ── App ── */
+  #app { display: none; }
+  .app-header { position: sticky; top: 0; z-index: 100; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; height: 58px; }
+  .app-logo { font-size: 12px; font-weight: 700; letter-spacing: 0.16em; color: var(--accent2); text-transform: uppercase; cursor: pointer; }
+  .app-ticker-info { display: flex; align-items: center; gap: 16px; }
+  .app-ticker { font-size: 18px; font-weight: 800; }
+  .app-price { font-size: 18px; font-weight: 700; }
+  .app-change { font-size: 13px; font-weight: 500; }
+  .new-search-btn { padding: 7px 16px; font-size: 12px; font-weight: 600; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .new-search-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+  /* ── Tabs ── */
+  .tab-bar { display: flex; gap: 4px; padding: 16px 24px 0; overflow-x: auto; border-bottom: 1px solid var(--border); }
+  .tab-bar::-webkit-scrollbar { height: 2px; }
+  .tab-btn { padding: 9px 16px; font-size: 13px; font-weight: 500; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; white-space: nowrap; transition: all 0.15s; margin-bottom: -1px; }
+  .tab-btn.active { color: var(--accent2); border-bottom-color: var(--accent); }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+
+  /* ── Content ── */
+  .tab-content { padding: 24px; display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Metric cards ── */
+  .metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 28px; }
+  .metric-card { background: var(--card); border: 0.5px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .metric-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
+  .metric-value { font-size: 21px; font-weight: 700; line-height: 1.1; }
+  .metric-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ── Section head ── */
+  .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .section-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: var(--accent2); background: #6366f115; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; }
+  .section-title { font-size: 14px; font-weight: 600; }
+
+  /* ── Chart ── */
+  .chart-wrap { background: var(--card); border: 0.5px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+  .chart-inner { position: relative; width: 100%; height: 260px; }
+
+  /* ── Analysis cards ── */
+  .analysis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .analysis-card { background: var(--card); border: 0.5px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .analysis-card-head { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .analysis-card-body { font-size: 12px; color: var(--muted); line-height: 1.65; }
+
+  /* ── Sliders ── */
+  .slider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; margin-bottom: 20px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .slider-row label span { color: var(--accent2); font-weight: 600; }
+  .slider-row input[type=range] { width: 100%; accent-color: var(--accent); }
+  .slider-hints { display: flex; justify-content: space-between; font-size: 10px; color: var(--subtle); margin-top: 2px; }
+
+  /* ── Price output ── */
+  .price-output { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .po-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .po-value { font-size: 26px; font-weight: 800; }
+
+  /* ── Risk cards ── */
+  .risk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .risk-card { background: var(--card); border: 0.5px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .risk-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .risk-badges { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .badge { font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+  .risk-body { font-size: 11px; color: var(--muted); line-height: 1.55; }
+
+  /* ── Tables ── */
+  .scenario-table-wrap { overflow-x: auto; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 500px; }
+  thead tr { background: var(--card); }
+  th { padding: 9px 12px; text-align: right; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child { text-align: left; }
+  td { padding: 8px 12px; text-align: right; border-bottom: 0.5px solid var(--border); }
+  td:first-child { text-align: left; font-weight: 600; }
+  tr:nth-child(odd) td { background: var(--surface); }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Year buttons ── */
+  .year-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .year-btn { padding: 6px 14px; font-size: 11px; font-weight: 500; background: transparent; border: 0.5px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .year-btn.active { border-color: var(--accent); color: var(--accent2); background: #6366f115; }
+
+  /* ── Misc ── */
+  .footnote { font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+  .error-msg { background: #f43f5e12; border: 1px solid #f43f5e30; border-radius: 10px; padding: 16px 20px; color: #f87171; font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
+
+  @media (max-width: 600px) {
+    .app-header { padding: 0 14px; }
+    .tab-content { padding: 16px; }
+    .app-price, .app-change { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LANDING -->
+<div id="landing">
+  <div class="logo">Axiom</div>
+  <h1 class="hero-title">Analyse <span>any stock</span><br>like a pro</h1>
+  <p class="hero-sub">Enter any ticker to get a full AI-powered financial analysis — segments, valuation model, risk matrix, and price scenarios — in seconds.</p>
+  <div class="search-wrap">
+    <input type="text" id="tickerInput" placeholder="e.g. AAPL, TSLA, NVDA, SPCX" maxlength="10" autocomplete="off" />
+    <button class="search-btn" onclick="startAnalysis()">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+    </button>
+  </div>
+  <div class="quick-chips">
+    <span class="chip" onclick="quickSearch('AAPL')">AAPL</span>
+    <span class="chip" onclick="quickSearch('NVDA')">NVDA</span>
+    <span class="chip" onclick="quickSearch('MSFT')">MSFT</span>
+    <span class="chip" onclick="quickSearch('TSLA')">TSLA</span>
+    <span class="chip" onclick="quickSearch('AMZN')">AMZN</span>
+    <span class="chip" onclick="quickSearch('META')">META</span>
+    <span class="chip" onclick="quickSearch('GOOGL')">GOOGL</span>
+    <span class="chip" onclick="quickSearch('SPCX')">SPCX</span>
+  </div>
+</div>
+
+<!-- LOADER -->
+<div id="loader" style="display:none; min-height:100vh; align-items:center; justify-content:center; flex-direction:column; gap:20px;">
+  <div class="loader-ring"></div>
+  <div class="loader-steps">
+    <div class="loader-step active" id="step0"><span class="step-dot"></span>Fetching latest financials…</div>
+    <div class="loader-step" id="step1"><span class="step-dot"></span>Analysing revenue &amp; earnings…</div>
+    <div class="loader-step" id="step2"><span class="step-dot"></span>Building segment breakdown…</div>
+    <div class="loader-step" id="step3"><span class="step-dot"></span>Running valuation models…</div>
+    <div class="loader-step" id="step4"><span class="step-dot"></span>Generating risk matrix…</div>
+    <div class="loader-step" id="step5"><span class="step-dot"></span>Assembling your report…</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none;">
+  <div class="app-header">
+    <div class="app-logo" onclick="backToLanding()">Axiom</div>
+    <div class="app-ticker-info">
+      <span class="app-ticker" id="headerTicker"></span>
+      <span class="app-price" id="headerPrice"></span>
+      <span class="app-change" id="headerChange"></span>
+    </div>
+    <button class="new-search-btn" onclick="backToLanding()">← New search</button>
+  </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
+    <button class="tab-btn" onclick="switchTab('segments',this)">Segments</button>
+    <button class="tab-btn" onclick="switchTab('model',this)">Valuation model</button>
+    <button class="tab-btn" onclick="switchTab('scenarios',this)">Scenarios</button>
+    <button class="tab-btn" onclick="switchTab('risks',this)">Risk matrix</button>
+  </div>
+  <div class="tab-content active" id="tab-overview"></div>
+  <div class="tab-content" id="tab-segments"></div>
+  <div class="tab-content" id="tab-model"></div>
+  <div class="tab-content" id="tab-scenarios"></div>
+  <div class="tab-content" id="tab-risks"></div>
+</div>
+
+<script>
+let currentData = null;
+let charts = {};
+let modelInputs = { growth1: 15, growth2: 12, margin: 25, multiple: 18, targetYear: 2, shares: 15, currentEbitda: 50 };
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+function show(id) {
+  document.getElementById('landing').style.display = id === 'landing' ? 'flex' : 'none';
+  document.getElementById('loader').style.display  = id === 'loader'  ? 'flex' : 'none';
+  document.getElementById('app').style.display     = id === 'app'     ? 'block' : 'none';
+  if (id === 'loader') {
+    document.getElementById('loader').style.flexDirection = 'column';
+    document.getElementById('loader').style.minHeight = '100vh';
+    document.getElementById('loader').style.alignItems = 'center';
+    document.getElementById('loader').style.justifyContent = 'center';
+  }
+}
+
+function backToLanding() {
+  Object.values(charts).forEach(c => { try { c.destroy(); } catch(e){} });
+  charts = {};
+  currentData = null;
+  document.getElementById('tickerInput').value = '';
+  ['overview','segments','model','scenarios','risks'].forEach(t => document.getElementById('tab-'+t).innerHTML = '');
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', i===0));
+  document.querySelectorAll('.tab-content').forEach((c,i) => c.classList.toggle('active', i===0));
+  show('landing');
+}
+
+function quickSearch(t) { document.getElementById('tickerInput').value = t; startAnalysis(); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('landing').style.display !== 'none') startAnalysis();
+});
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  if (currentData) {
+    if (name === 'overview') setTimeout(renderOverviewChart, 30);
+    if (name === 'segments') setTimeout(renderSegmentChart, 30);
+    if (name === 'model')    setTimeout(renderModelChart, 30);
+    if (name === 'scenarios') setTimeout(renderScenariosChart, 30);
+  }
+}
+
+// ── Loader ──────────────────────────────────────────────────────────────────
+function animateLoader() {
+  let i = 0;
+  const steps = document.querySelectorAll('.loader-step');
+  steps.forEach(s => { s.className = 'loader-step'; });
+  steps[0].classList.add('active');
+  return setInterval(() => {
+    if (i < steps.length - 1) {
+      steps[i].className = 'loader-step done';
+      i++;
+      steps[i].classList.add('active');
+    }
+  }, 900);
+}
+
+// ── Main entry ──────────────────────────────────────────────────────────────
+async function startAnalysis() {
+  const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+  if (!ticker) return;
+  show('loader');
+  const interval = animateLoader();
+  try {
+    const data = await fetchStock(ticker);
+    clearInterval(interval);
+    currentData = data;
+    renderApp(data);
+    show('app');
+  } catch(err) {
+    clearInterval(interval);
+    show('landing');
+    alert('Analysis failed: ' + err.message);
+  }
+}
+
+// ── API call — hits your Vercel proxy ───────────────────────────────────────
+async function fetchStock(ticker) {
+  const res = await fetch('/api/analyse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Render shell ─────────────────────────────────────────────────────────────
+function renderApp(d) {
+  document.getElementById('headerTicker').textContent = d.ticker || '';
+  document.getElementById('headerPrice').textContent = d.price != null ? `$${(+d.price).toFixed(2)}` : '';
+  const chg = d.priceChangePct;
+  const chgEl = document.getElementById('headerChange');
+  if (chg != null) {
+    chgEl.textContent = `${chg >= 0 ? '+' : ''}${(+chg).toFixed(2)}%`;
+    chgEl.className = 'app-change ' + (chg >= 0 ? 'positive' : 'negative');
+  }
+  renderOverviewTab(d);
+  renderSegmentsTab(d);
+  renderModelTab(d);
+  renderScenariosTab(d);
+  renderRisksTab(d);
+  setTimeout(renderOverviewChart, 60);
+}
+
+// ── Overview ─────────────────────────────────────────────────────────────────
+function renderOverviewTab(d) {
+  const cmap = { accent:'var(--accent2)', green:'var(--green)', red:'var(--red)', amber:'var(--amber)', purple:'var(--purple)', text:'var(--text)' };
+  const metricsHtml = (d.metrics||[]).map(m => `
+    <div class="metric-card">
+      <div class="metric-label">${m.label}</div>
+      <div class="metric-value" style="color:${cmap[m.color]||'var(--text)'}">${m.value}</div>
+      ${m.sub ? `<div class="metric-sub">${m.sub}</div>` : ''}
+    </div>`).join('');
+
+  const vc = d.verdict === 'BUY' ? 'var(--green)' : d.verdict === 'SELL' ? 'var(--red)' : 'var(--amber)';
+  const cats = (d.catalysts||[]).map(c => `
+    <div class="analysis-card">
+      <div class="analysis-card-head">${c.icon||''} ${c.title}</div>
+      <div class="analysis-card-body">${c.body}</div>
+    </div>`).join('');
+
+  const ac = d.analystConsensus || {};
+  const tot = (ac.buy||0)+(ac.hold||0)+(ac.sell||0);
+  const bp = tot ? Math.round((ac.buy||0)/tot*100) : 0;
+  const hp = tot ? Math.round((ac.hold||0)/tot*100) : 0;
+  const sp = tot ? Math.round((ac.sell||0)/tot*100) : 0;
+
+  document.getElementById('tab-overview').innerHTML = `
+    <div class="section-head"><span class="section-tag">Company</span><span class="section-title">${d.company||''} · ${d.sector||''}</span></div>
+    <p style="font-size:14px;color:var(--muted);line-height:1.65;margin-bottom:24px;max-width:720px">${d.thesis||''}</p>
+    <div class="section-head"><span class="section-tag">Key metrics</span></div>
+    <div class="metric-grid">${metricsHtml}</div>
+    <div class="section-head"><span class="section-tag">Revenue &amp; profit history</span></div>
+    <div class="chart-wrap"><div class="chart-inner"><canvas id="overviewChart" role="img" aria-label="Revenue and profit history for ${d.ticker}"></canvas></div></div>
+    <div class="section-head"><span class="section-tag">Growth catalysts</span></div>
+    <div class="analysis-grid">${cats}</div>
+    <div class="section-head"><span class="section-tag">Analyst consensus</span></div>
+    <div class="analysis-card" style="margin-bottom:24px">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div style="text-align:center"><div style="font-size:28px;font-weight:800;color:${vc}">${d.verdict||'—'}</div><div style="font-size:11px;color:var(--muted)">Consensus</div></div>
+        <div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Buy ${ac.buy||0} · Hold ${ac.hold||0} · Sell ${ac.sell||0}</div>
+          <div style="display:flex;gap:2px;height:8px;border-radius:4px;overflow:hidden;width:200px">
+            <div style="width:${bp}%;background:var(--green)"></div>
+            <div style="width:${hp}%;background:var(--amber)"></div>
+            <div style="width:${sp}%;background:var(--red)"></div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted)">12-month price targets</div>
+          <div style="font-size:13px;font-weight:600;margin-top:2px">Low $${ac.priceTargetLow||'—'} · <span style="color:var(--accent2)">Avg $${ac.priceTargetAvg||'—'}</span> · High $${ac.priceTargetHigh||'—'}</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">${ac.topFirmRating||''}</div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)">${d.competitivePosition||''}</div>
+    </div>
+    <div class="footnote">Data sourced via AI web search · For informational purposes only · Not financial advice</div>`;
+}
+
+function renderOverviewChart() {
+  if (!currentData) return;
+  if (charts.overview) { try { charts.overview.destroy(); } catch(e){} }
+  const canvas = document.getElementById('overviewChart');
+  if (!canvas) return;
+  const hist = currentData.revenueHistory || [];
+  charts.overview = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: hist.map(h => h.year),
+      datasets: [
+        { label: 'Revenue ($B)', data: hist.map(h => h.revenue), backgroundColor: '#6366f130', borderColor: '#818cf8', borderWidth: 1.5, borderRadius: 4 },
+        { label: 'Net income ($B)', data: hist.map(h => h.profit), type: 'line', tension: 0.3, pointRadius: 4, fill: true, backgroundColor: '#22c55e20', borderColor: '#22c55e', borderWidth: 2 }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#64748b', font:{ size:11 } } }, tooltip:{ callbacks:{ label: c => ` $${(+c.raw).toFixed(1)}B` } } },
+      scales:{ x:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 } } }, y:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 }, callback: v => `$${v}B` } } }
+    }
+  });
+}
+
+// ── Segments ─────────────────────────────────────────────────────────────────
+function renderSegmentsTab(d) {
+  const cmap = { green:'var(--green)', accent:'var(--accent2)', purple:'var(--purple)', amber:'var(--amber)', cyan:'var(--cyan)', red:'var(--red)' };
+  const cards = (d.segments||[]).map(s => {
+    const col = cmap[s.color]||'var(--accent2)';
+    const chg = s.revenue2024 > 0 ? (((s.revenue2025-s.revenue2024)/s.revenue2024)*100).toFixed(1) : null;
+    return `<div class="analysis-card" style="border-color:${col}35">
+      <div style="font-size:10px;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">${s.name}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div><div style="font-size:10px;color:var(--muted)">2025</div><div style="font-size:16px;font-weight:700">$${(s.revenue2025||0).toFixed(1)}B</div></div>
+        <div><div style="font-size:10px;color:var(--muted)">YoY</div><div style="font-size:16px;font-weight:700;color:${chg>=0?'var(--green)':'var(--red)'}">${chg!=null?(chg>=0?'+':'')+chg+'%':'—'}</div></div>
+        <div><div style="font-size:10px;color:var(--muted)">Margin</div><div style="font-size:16px;font-weight:700">${s.margin||'—'}</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.55">${s.description||''}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('tab-segments').innerHTML = `
+    <div class="section-head"><span class="section-tag">Segment breakdown</span></div>
+    <div class="chart-wrap"><div class="chart-inner"><canvas id="segChart" role="img" aria-label="Segment revenue for ${d.ticker}"></canvas></div></div>
+    <div class="analysis-grid">${cards}</div>
+    <div class="analysis-card"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Competitive position</div><div class="analysis-card-body">${d.competitivePosition||'—'}</div></div>
+    <div class="analysis-card" style="margin-top:12px"><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Management quality</div><div class="analysis-card-body">${d.managementQuality||'—'}</div></div>`;
+  setTimeout(renderSegmentChart, 30);
+}
+
+function renderSegmentChart() {
+  if (!currentData) return;
+  if (charts.segment) { try { charts.segment.destroy(); } catch(e){} }
+  const canvas = document.getElementById('segChart');
+  if (!canvas) return;
+  const segs = currentData.segments || [];
+  const cmap = { green:'#22c55e', accent:'#818cf8', purple:'#a78bfa', amber:'#f59e0b', cyan:'#22d3ee', red:'#f43f5e' };
+  charts.segment = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: segs.map(s => s.name),
+      datasets: [
+        { label: '2024', data: segs.map(s => s.revenue2024||0), backgroundColor: segs.map(s => (cmap[s.color]||'#818cf8')+'40'), borderRadius: 4 },
+        { label: '2025', data: segs.map(s => s.revenue2025||0), backgroundColor: segs.map(s => cmap[s.color]||'#818cf8'), borderRadius: 4 }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#64748b', font:{ size:11 } } }, tooltip:{ callbacks:{ label: c => ` $${(+c.raw).toFixed(1)}B` } } },
+      scales:{ x:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 } } }, y:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 }, callback: v => `$${v}B` } } }
+    }
+  });
+}
+
+// ── Valuation model ───────────────────────────────────────────────────────────
+function renderModelTab(d) {
+  const md = d.modelDefaults || {};
+  modelInputs = {
+    growth1: md.revenueGrowth1 || 15,
+    growth2: md.revenueGrowth2 || 12,
+    margin:  md.ebitdaMargin || 25,
+    multiple: md.evMultiple || 18,
+    targetYear: 2,
+    shares: md.sharesOutstanding || 15,
+    currentEbitda: md.currentEbitda || 50,
+  };
+  document.getElementById('tab-model').innerHTML = `
+    <div class="section-head"><span class="section-tag">Build your own valuation</span></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:20px;max-width:600px;line-height:1.6">Adjust the inputs below. Implied price = <code style="background:var(--card);padding:2px 6px;border-radius:4px;font-size:11px">EBITDA × multiple ÷ shares</code></p>
+    <div class="slider-grid">
+      <div class="slider-row">
+        <label>Revenue growth yr 1 <span id="g1v">${modelInputs.growth1}%</span></label>
+        <input type="range" id="slG1" min="0" max="60" step="1" value="${modelInputs.growth1}" oninput="updateModel()">
+        <div class="slider-hints"><span>0%</span><span>60%</span></div>
+      </div>
+      <div class="slider-row">
+        <label>Revenue growth yr 2 <span id="g2v">${modelInputs.growth2}%</span></label>
+        <input type="range" id="slG2" min="0" max="50" step="1" value="${modelInputs.growth2}" oninput="updateModel()">
+        <div class="slider-hints"><span>0%</span><span>50%</span></div>
+      </div>
+      <div class="slider-row">
+        <label>EBITDA margin <span id="mv">${modelInputs.margin}%</span></label>
+        <input type="range" id="slM" min="5" max="55" step="1" value="${modelInputs.margin}" oninput="updateModel()">
+        <div class="slider-hints"><span>5%</span><span>55%</span></div>
+      </div>
+      <div class="slider-row">
+        <label>EV/EBITDA multiple <span id="multv">${modelInputs.multiple}x</span></label>
+        <input type="range" id="slMult" min="5" max="50" step="1" value="${modelInputs.multiple}" oninput="updateModel()">
+        <div class="slider-hints"><span>5x</span><span>50x</span></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--muted)">Target year:</span>
+      <div class="year-btns">
+        <button class="year-btn" onclick="setTY(1,this)">Yr 1</button>
+        <button class="year-btn active" onclick="setTY(2,this)">Yr 2</button>
+        <button class="year-btn" onclick="setTY(3,this)">Yr 3</button>
+      </div>
+    </div>
+    <div class="price-output" id="priceOut"></div>
+    <div class="section-head"><span class="section-tag">Implied price across multiples</span></div>
+    <div class="chart-wrap"><div class="chart-inner"><canvas id="modelChart" role="img" aria-label="Implied price at different multiples"></canvas></div></div>
+    <div class="footnote">Not financial advice. Model uses EBITDA-based approach. All projections are illustrative.</div>`;
+  updateModel();
+  setTimeout(renderModelChart, 30);
+}
+
+function setTY(y, btn) {
+  modelInputs.targetYear = y;
+  btn.closest('.year-btns').querySelectorAll('.year-btn').forEach((b,i) => b.classList.toggle('active', i+1===y));
+  updateModel();
+}
+
+function updateModel() {
+  const g1 = +document.getElementById('slG1')?.value / 100 || 0.15;
+  const g2 = +document.getElementById('slG2')?.value / 100 || 0.12;
+  const mg = +document.getElementById('slM')?.value / 100 || 0.25;
+  const mt = +document.getElementById('slMult')?.value || 18;
+  const y = modelInputs.targetYear || 2;
+
+  document.getElementById('g1v') && (document.getElementById('g1v').textContent = Math.round(g1*100)+'%');
+  document.getElementById('g2v') && (document.getElementById('g2v').textContent = Math.round(g2*100)+'%');
+  document.getElementById('mv')  && (document.getElementById('mv').textContent  = Math.round(mg*100)+'%');
+  document.getElementById('multv') && (document.getElementById('multv').textContent = mt+'x');
+
+  const rates = [g1, g2, g2*0.85, g2*0.7, g2*0.55];
+  let rev = modelInputs.currentEbitda / (mg > 0 ? mg : 0.25);
+  for (let i = 0; i < y; i++) rev *= (1 + (rates[i] || g2));
+  const fwdEbitda = rev * mg;
+  const impliedPx = (fwdEbitda * mt * 1e9) / (modelInputs.shares * 1e9);
+  const cur = currentData?.price || 100;
+  const upside = ((impliedPx / cur) - 1) * 100;
+
+  const po = document.getElementById('priceOut');
+  if (po) po.innerHTML = `
+    <div class="po-item"><div class="po-label">Implied price</div><div class="po-value" style="color:${impliedPx>cur?'var(--green)':'var(--red)'}">$${impliedPx.toFixed(0)}</div></div>
+    <div class="po-item"><div class="po-label">Upside / downside</div><div class="po-value" style="color:${upside>=0?'var(--green)':'var(--red)'}">${upside>=0?'+':''}${upside.toFixed(0)}%</div></div>
+    <div class="po-item"><div class="po-label">Fwd EBITDA</div><div class="po-value" style="color:var(--accent2)">$${fwdEbitda.toFixed(1)}B</div></div>
+    <div class="po-item"><div class="po-label">Implied mkt cap</div><div class="po-value">$${(impliedPx*modelInputs.shares/1e3).toFixed(2)}T</div></div>`;
+
+  if (charts.model) renderModelChart();
+}
+
+function renderModelChart() {
+  if (!currentData) return;
+  if (charts.model) { try { charts.model.destroy(); } catch(e){} }
+  const canvas = document.getElementById('modelChart');
+  if (!canvas) return;
+  const g1 = +document.getElementById('slG1')?.value / 100 || 0.15;
+  const g2 = +document.getElementById('slG2')?.value / 100 || 0.12;
+  const mg = +document.getElementById('slM')?.value / 100 || 0.25;
+  const y = modelInputs.targetYear || 2;
+  const rates = [g1, g2, g2*0.85];
+  let rev = modelInputs.currentEbitda / (mg > 0 ? mg : 0.25);
+  for (let i = 0; i < y; i++) rev *= (1 + (rates[i]||g2));
+  const fwdEbitda = rev * mg;
+  const multiples = [6,8,10,12,15,18,20,22,25,28,32,36,40];
+  const prices = multiples.map(m => +((fwdEbitda * m * 1e9) / (modelInputs.shares * 1e9)).toFixed(0));
+  const cur = currentData.price || 100;
+  charts.model = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: multiples.map(m => m+'x'),
+      datasets: [{ label: 'Implied price', data: prices, backgroundColor: prices.map(p => p>cur?'#22c55e50':'#f43f5e50'), borderColor: prices.map(p => p>cur?'#22c55e':'#f43f5e'), borderWidth:1.5, borderRadius:4 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: c => ` $${c.raw} implied` } } },
+      scales:{ x:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 } } }, y:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 }, callback: v => `$${v}` } } }
+    }
+  });
+}
+
+// ── Scenarios ─────────────────────────────────────────────────────────────────
+function renderScenariosTab(d) {
+  const proj = d.projections || {};
+  function tRows(sc, col) {
+    const p = proj[sc]; if (!p) return '';
+    return (p.years||[]).map((yr,i) => `<tr><td style="color:${col}">${yr}</td><td>$${(p.revenue[i]||0).toFixed(1)}B</td><td style="color:var(--cyan)">$${(p.ebitda[i]||0).toFixed(1)}B</td><td style="color:${col};font-weight:600">$${Math.round(p.impliedPrice[i]||0)}</td></tr>`).join('');
+  }
+  document.getElementById('tab-scenarios').innerHTML = `
+    <div class="section-head"><span class="section-tag">Bull case</span></div>
+    <div class="scenario-table-wrap"><table><thead><tr><th>Year</th><th>Revenue</th><th>EBITDA</th><th>Implied price</th></tr></thead><tbody>${tRows('bull','var(--green)')}</tbody></table></div>
+    <div class="section-head"><span class="section-tag">Base case</span></div>
+    <div class="scenario-table-wrap"><table><thead><tr><th>Year</th><th>Revenue</th><th>EBITDA</th><th>Implied price</th></tr></thead><tbody>${tRows('base','var(--accent2)')}</tbody></table></div>
+    <div class="section-head"><span class="section-tag">Bear case</span></div>
+    <div class="scenario-table-wrap"><table><thead><tr><th>Year</th><th>Revenue</th><th>EBITDA</th><th>Implied price</th></tr></thead><tbody>${tRows('bear','var(--red)')}</tbody></table></div>
+    <div class="section-head" style="margin-top:24px"><span class="section-tag">Scenario chart</span></div>
+    <div class="chart-wrap"><div class="chart-inner"><canvas id="scChart" role="img" aria-label="Scenario price chart"></canvas></div></div>
+    <div class="footnote">Not financial advice. All projections are illustrative estimates.</div>`;
+  setTimeout(renderScenariosChart, 30);
+}
+
+function renderScenariosChart() {
+  if (!currentData) return;
+  if (charts.scenarios) { try { charts.scenarios.destroy(); } catch(e){} }
+  const canvas = document.getElementById('scChart');
+  if (!canvas) return;
+  const proj = currentData.projections || {};
+  const base = proj.base || {};
+  const labels = ['Today', ...(base.years||[])];
+  const cur = currentData.price || 0;
+  const mkDs = (sc, color) => ({ label: sc.charAt(0).toUpperCase()+sc.slice(1), data: [cur, ...(proj[sc]?.impliedPrice||[])], borderColor: color, backgroundColor:'transparent', borderWidth:2, pointRadius:4, tension:0.3 });
+  charts.scenarios = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [mkDs('bull','#22c55e'), mkDs('base','#818cf8'), mkDs('bear','#f43f5e')] },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#64748b', font:{ size:11 } } }, tooltip:{ callbacks:{ label: c => ` $${(+c.raw).toFixed(0)}` } } },
+      scales:{ x:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 } } }, y:{ grid:{ color:'#1e2535' }, ticks:{ color:'#64748b', font:{ size:11 }, callback: v => `$${v}` } } }
+    }
+  });
+}
+
+// ── Risks ─────────────────────────────────────────────────────────────────────
+function renderRisksTab(d) {
+  const ic = { Critical:'#f43f5e', High:'#f59e0b', Medium:'#818cf8', Low:'#22c55e', Structural:'#a78bfa', 'Priced in':'#64748b' };
+  const pc = { High:'#f43f5e', Medium:'#f59e0b', Low:'#22c55e', Certain:'#f43f5e', 'Low–Medium':'#f59e0b' };
+  const cards = (d.risks||[]).map(r => {
+    const icol = ic[r.impact]||'#818cf8';
+    const pcol = pc[r.probability]||'#f59e0b';
+    return `<div class="risk-card">
+      <div class="risk-title">${r.title}</div>
+      <div class="risk-badges">
+        <span class="badge" style="background:${pcol}20;color:${pcol}">Prob: ${r.probability}</span>
+        <span class="badge" style="background:${icol}20;color:${icol}">${r.impact}</span>
+      </div>
+      <div class="risk-body">${r.body}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('tab-risks').innerHTML = `
+    <div class="section-head"><span class="section-tag">Material risks</span></div>
+    <div class="risk-grid">${cards}</div>
+    <div class="footnote">Risk assessment generated by AI. Actual risks may differ. Not financial advice.</div>`;
+}
+
+show('landing');
+</script>
+</body>
+</html>

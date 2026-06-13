@@ -1,0 +1,9 @@
+{
+  "name": "axiom-stock-analysis",
+  "version": "1.0.0",
+  "description": "AI-powered stock analysis app",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}
